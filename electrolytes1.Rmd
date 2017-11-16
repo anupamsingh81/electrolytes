@@ -1,0 +1,284 @@
+---
+title: "Serum vs ABG electrolyte Comparison"
+author: "Anupam kumar Singh , Imran Khan"
+date: "26 October 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r,include=FALSE}
+library(tidyverse)
+electrolytes=read.csv("electrolytes.csv")
+```
+
+We Aim to analyse Following aspects in this article
+
+1. Distribution of serum and point of care(POC) electrolytes variables
+2. Correlation of serum and POC elecyrolytes
+3. t. test of serum and POC electrolytes
+4. Any misclassification of electrolyte categories by POC vis a vis serum test
+5. Deming Regression , Normal regression , Regression equation of serum from POC test
+6. Bland -Altman test,graphs, n stats of the two methods
+
+All samples are independent in our article with no repeated measures for any patient
+
+Let us start by creating categories of hypo/hyper/normo for sodium and potassium for both groups
+
+```{r,echo=FALSE}
+electrolytes= electrolytes %>% mutate(sodium_serum = case_when(
+  serum_na <135 ~ "Hyponatremia",
+  serum_na >150 ~ "Hypernatremia",
+  TRUE ~ "Normal"
+),sodium_poc = case_when(
+  poc_na <135 ~ "Hyponatremia",
+  poc_na >150 ~ "Hypernatremia",
+  TRUE ~ "Normal"
+) , potassium_serum = case_when(
+  serum_k <3.5 ~ "Hypokalemia",
+  serum_k >5.0 ~ "Hyperkalemia",
+  TRUE ~ "Normal"
+), potassium_poc = case_when(
+  poc_k <3.5 ~ "Hypokalemia",
+  poc_k >5.0 ~ "Hyperkalemia",
+  TRUE ~ "Normal"
+))
+
+
+```
+
+
+
+
+
+```{r,include=FALSE}
+electrolytes= electrolytes %>%  mutate(potassium_serum=factor(potassium_serum,levels=c("Hypokalemia","Normal","Hyperkalemia")),potassium_poc=factor(potassium_poc,levels=c("Hypokalemia","Normal","Hyperkalemia")),sodium_poc=factor(sodium_poc,levels=c("Hyponatremia","Normal","Hypernatremia")),sodium_serum=factor(sodium_serum,levels=c("Hyponatremia","Normal","Hypernatremia")))
+```
+
+Let us see summary of our data
+
+```{r,echo=FALSE}
+electrolytes %>% select(poc_na,poc_k,serum_na,serum_k,potassium_serum,sodium_serum,potassium_poc,sodium_poc) %>% summary()
+```
+
+We can see that there are no hpernatremia patients in our population and misclassification is frequent in potassium group.
+
+Let us visualise 
+
+```{r,echo=FALSE}
+electrolytes %>% ggplot(aes(x=poc_na))+geom_histogram()
+
+electrolytes %>% ggplot(aes(x=serum_na))+geom_histogram()
+electrolytes %>% ggplot(aes(x=poc_k))+geom_histogram()
+
+electrolytes %>% ggplot(aes(x=serum_k))+geom_histogram()
+
+
+
+
+
+```
+
+
+
+Let us visualise comparative frequency polygons to have relative idea of distribution of sodium
+
+```{r,include==FALSE}
+electrolytes %>% select(poc_na,serum_na) %>% gather(key="samples",value = "value") %>% ggplot(aes(x=value,color=samples))+geom_freqpoly()
+```
+
+Let us visualise boxplot of sodium
+```{r,echo=FALSE}
+electrolytes %>% select(poc_na,serum_na) %>% gather(key="samples",value = "value") %>% ggplot(aes(y=value,x=samples))+geom_boxplot()
+```
+
+Let us visualise boxplot of potassium
+```{r,echo=FALSE}
+electrolytes %>% select(poc_k,serum_k) %>% gather(key="samples",value = "value") %>% ggplot(aes(y=value,x=samples))+geom_boxplot()
+```
+
+we can see serum potassium is slightly higher than poc potassium.
+
+Now let us visualise scatterplot with regression line for sodium and potassium
+
+```{r,echo=FALSE}
+electrolytes %>% ggplot(aes(x=serum_na,y=poc_na))+geom_point()+geom_smooth(method="lm",formula = y~x)
+```
+
+```{r,echo=FALSE}
+electrolytes %>% ggplot(aes(x=serum_k,y=poc_k))+geom_point()+geom_smooth(method="lm",formula = y~x)
+```
+
+
+Let us look at classification in potassium
+
+```{r,echo=FALSE}
+electrolytes %>% ggplot(aes(potassium_serum, ..count..)) + geom_bar(aes(fill = potassium_poc), position = "dodge")
+```
+
+Let us look at classification of sodium
+```{r}
+electrolytes %>% ggplot(aes(sodium_serum, ..count..)) + geom_bar(aes(fill = sodium_poc), position = "dodge")
+```
+
+Let us look at heat maps of sodium
+
+```{r,echo=FALSE}
+electrolytes %>% 
+  count(sodium_serum,sodium_poc) %>%  
+  ggplot(mapping = aes(x = sodium_serum, y = sodium_poc)) +
+    geom_tile(mapping = aes(fill = n))
+```
+
+Let us look at heat maps of potassium
+
+```{r}
+electrolytes %>% 
+  count(potassium_serum,potassium_poc) %>%  
+  ggplot(mapping = aes(x = potassium_serum, y = potassium_poc)) +
+    geom_tile(mapping = aes(fill = n))
+```
+
+Let us look at individual counts
+```{r}
+electrolytes %>% 
+  count(sodium_serum,sodium_poc)
+```
+
+classification count for potassium
+
+```{r}
+electrolytes %>% 
+  count(potassium_serum,potassium_poc) 
+```
+
+
+
+Now we have visualised data so it is time for some formal statistical tests, 
+First test of skewness
+
+```{r,include=FALSE}
+library(e1071)
+```
+
+
+```{r}
+electrolytes %>% select(serum_na,serum_k,poc_na,poc_k) %>% map(~skewness(.))
+```
+
+We see sodium data is relatively skewed 
+```{r}
+cor.test(electrolytes$poc_na,electrolytes$serum_na,method = "spearman")
+```
+
+Next Correlation test for potassium, We have used spearman's rho rank correlation due to non-normal distribution
+
+```{r}
+cor.test(electrolytes$poc_k,electrolytes$serum_k)
+```
+
+We can see correlation in potassium is a bit lower than correlation in potassium
+
+Now time for t test for potassium we will use normal paired t test while for sodium wilcox.test due to its non-normal distribution
+
+```{r}
+wilcox.test(electrolytes$poc_na,electrolytes$serum_na,paired = TRUE)
+```
+
+we see non-significant difference in sodium
+
+```{r}
+t.test(electrolytes$poc_k,electrolytes$serum_k,paired = TRUE)
+```
+we see that serum potassium is signifcantly higher than poc potassium, notably it was obvious from boxplot as well ..now we have a statistical test to say the same
+
+Now let us look at regression equation for serum sodium and potassium to see if they can be predicted from poc test
+
+First for potassium
+
+```{r}
+f = lm(serum_k~poc_k,data=electrolytes)
+summary(f)
+```
+
+Next for sodium
+
+```{r}
+fna = lm(serum_na~poc_na,data=electrolytes)
+summary(fna)
+```
+
+we see adjusted R square is 0.92 for sodium and 0.81 for potassium implying POC sodium has higher predictive value for serum compared to potassium
+
+We would also like to use deming regression for this analysis as it accounts for error in both variables and is required in clinical chemistry.
+you can find details [here](https://en.wikipedia.org/wiki/Deming_regression) and [here](https://www.r-bloggers.com/deming-and-passing-bablok-regression-in-r/) 
+
+```{r,include=FALSE}
+library(mcr)
+```
+
+First Deming regression for sodium
+
+```{r}
+
+dem.sodium <- mcreg(electrolytes$serum_na,electrolytes$poc_na,method.reg = "Deming")
+dem.sodium@para
+```
+
+Next Deming regression for Potassium
+
+```{r}
+dem.potassium <- mcreg(electrolytes$serum_k,electrolytes$poc_k,method.reg = "Deming")
+dem.potassium@para
+```
+
+Deming regressions are of historical importance, but important because sometimes journals can ask for them
+
+Now let us look at classification accuracy by kappa measurement. You can read more about it [here](https://en.wikipedia.org/wiki/Cohen%27s_kappa)
+
+```{r,include=FALSE}
+library(psych)
+
+```
+
+Cohen's kappa for Sodium
+
+```{r}
+elec_sod =electrolytes %>% select(sodium_poc,sodium_serum)
+cohen.kappa(elec_sod)
+```
+
+Cohen's kappa for Potassium
+
+```{r}
+elec_pot =electrolytes %>% select(potassium_poc,potassium_serum)
+cohen.kappa(elec_pot)
+```
+
+As expected cohen's kappa is slightly lower for potassium than sodium in conconcordance with our observations till now.
+
+
+Now we will calculate Bland Altman Plot and statistics for sodium and potassium . You can read more about it in this [article](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4470095/) and this [article](https://www.medcalc.org/manual/blandaltman.php)
+
+
+```{r,include=FALSE}
+library(MethComp)
+```
+
+Bland Altman Plot of Sodium
+
+```{r}
+ with(electrolytes,BlandAltman(serum_na,poc_na))
+```
+
+Thus For sodium Serum sodium is higher than POC test by 0.36 and 95% C.I is likely to be between - 5.93 to 6.66 , It shoud be kept in mind that limit of allowable bias for sodium is 4 meq/L
+
+Now Bland Altman Plot of Potassium
+
+```{r}
+ with(electrolytes,BlandAltman(serum_k,poc_k))
+```
+
+Thus For potassium Serum potassium is higher than POC test by 0.24 and 95% C.I is likely to be between - 0.57 to 1.0 , It shoud be kept in mind that limit of allowable bias for sodium is 0.5 meq/L
+ 
+ 
